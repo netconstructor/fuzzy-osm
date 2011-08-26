@@ -18,7 +18,7 @@ en2ru = {}
 for k,v in ru2en.items():
   en2ru[v] = k
 
-garbage_values = frozenset([".", "-", ",", "", "(", "-)", "()", "FIXME"])
+garbage_values = frozenset([".", "-", ",", "", "(", "-)", "()", "FIXME", "t", "1"])
 
 unusual_case_punct = dict([(x.decode("utf-8").lower().strip(), x.decode("utf-8").strip()) for x in open("presets/unusual_case_punct","r")])
 #print unusual_case_punct
@@ -52,7 +52,7 @@ def lat_ref(ref):
 def isLatin(string, fully = False):
   latin = False
   for a in string:
-    if a in "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM":
+    if a in "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNMā":
       if not fully:
         return True
       latin = True
@@ -71,6 +71,7 @@ def clean_name(need_review, name, what=("street",)):
     name = name.replace(u"№", u" №")
     name = name.replace(u"№ ", u"№")
     name = name.replace(u"/", u" / ")
+    name = name.replace(u"(", u"( ")
     name = " " + name.lower() + " "
     for tr in mistakes:
       name = name.replace(" "+tr+" ", " "+mistakes[tr]+" ")
@@ -129,6 +130,7 @@ def clean_name(need_review, name, what=("street",)):
       name = name.replace(u"( -)", u" ")
       name = name.replace(u"( )", u" ")
       name = name.replace(u" )", u")")
+      name = name.replace(u"( ", u"(")
       #if name != oname:
       #print name
     return need_review, name
@@ -194,15 +196,12 @@ def NicifyTags(obj="node", oid=0, tags={}):
             del tags[ref_key]
           elif tags.get("name","").lower() == tlr:                              # убиваем ref=Челюскинцев при name=Челюскинцев
             del tags[ref_key]
+          elif "iela" in tlr:
+            del tags[ref_key]
+            tags["name"] = tlr
           else:
             need_review = True
-    if "ref" in tags:                                                           # добиваем ref на основе nat_ref
-      if tags["ref"][0] in "MPH":
-        if "nat_ref" not in tags:
-          tags["nat_ref"] = cyr_ref(tags["ref"])
-    if "nat_ref" in tags:                                                       # ...и nat_ref на основе ref
-      if "ref" not in tags:
-        tags["ref"] = lat_ref(tags["nat_ref"])
+
   for ref_key in ("ref", "nat_ref", "int_ref"):                                 # собираем возможные ref
     if ref_key in tags:
       refs.add(tags[ref_key])
@@ -210,44 +209,29 @@ def NicifyTags(obj="node", oid=0, tags={}):
     if tags["name"] in refs:
       del tags["name"]
       
-  ### TODO: Better ukrainian processing
-  if False and u"name" in tags:
-    name = tags["name"]                                                         # если встретится явный белорусский в name
-    for bel_char  in (u"і",u"ў", u"вул."):
-      if bel_char in name.lower():
-        is_uk = False
-        if tags["name:uk"] == tags["name"]:
-          is_uk = True
-        for uk_char in (u"и",u"ї",u"ґ",u"є"):
-          if uk_char in name.lower():
-            tags["name:uk"] = tags["name"]
-            is_uk = True
-            break
-        if is_uk:
-          break
-        if "name:be" not in tags:                                               # унести его в name:be
-          tags["name:be"] = tags["name"]
-        if tags["name:be"] == name:
-          if "name:ru" in tags:
-            tags["name"] = tags["name:ru"]                                      # вернуть на место name:ru
-          else:
-            del tags["name"]                                                    # или хотя бы пожаловаться
-            need_review = True
-            tags["fixme:komzpa"] = u"добавить русское имя"
-            break
+
   if ("highway" in tags or "waterway" in tags) and obj != "node":
     if "name" in tags:
       need_review, tags["name"] = clean_name(need_review, tags["name"], ("street",))
       
     if "name:ru" in tags:
       need_review, tags["name:ru"] = clean_name(need_review, tags["name:ru"], ("street",))
-  if "created_by" in tags:
-    del tags["created_by"]
+    if tags.get("name","").lower() in ("sidewalk",):
+      del tags["name"]
+      tags["highway"] = "footway"
+      tags["footway"] = "sidewalk"
+
   if "waterway" in tags and "natural" in tags:
     if tags["waterway"] == "riverbank" and "name" in tags and tags["natural"]=="water":
       del tags["natural"]
       del tags["name"]
       need_review = True
+  if tags.get("natural","") == "water":
+    if tags.get("name","").lower() in ("ezers", "озеро"):
+      del tags["name"]
+      tags["water"] = "lake"
+    if "ezers" in tags.get("name","").lower() or "озеро" in tags.get("name","").lower():
+      tags["water"] = "lake"
   
   if tags.get("shop","")=="car":
     if tags.get("name","").lower()=="сто" or tags.get("name","").lower()=="сто (sto)":
@@ -260,7 +244,8 @@ def NicifyTags(obj="node", oid=0, tags={}):
     if u"сто" in tags.get("name","").lower():
       tags["shop"] = "car_repair"
 
-
+  if "cat_" in tags:
+    del tags["cat_"]
   if tags.get("amenity","") == "parking" or tags.get("landuse","") == "garages":
     if "name" in tags:
       name = tags["name"].lower()
@@ -347,15 +332,6 @@ def NicifyTags(obj="node", oid=0, tags={}):
 
 
 
-  if obj == 'way':
-    if "highway" in tags:
-      if  "name" not in tags and tags["highway"] == "living_street":
-        tags["highway"] = "service"
-        tags["living_street"] = "yes"
-
-    if "service" in tags:
-      if "living_street" in tags and tags["service"] == "parikng_aisle":
-        del tags["service"]
   if tags.get("addr:country","").lower() in ("by", "belarus"):
     del tags["addr:country"]
     if "addr:city" in tags:
@@ -374,25 +350,9 @@ def NicifyTags(obj="node", oid=0, tags={}):
   if tags.get("oneway","").lower() in ("yes", "true", "1"):
     tags["oneway"] = "yes"
 
+  if "landuse" in tags and "area" in tags:
+    del tags["area"]
 
-  if obj == 'way':
-    if 'highway' in tags:
-      if 'ref' in tags:
-        rclass = tags['ref'][0]
-        if rclass == 'M':
-          if tags['highway'] not in ('motorway','motorway_link','trunk','trunk_link'):
-            tags['highway'] = 'trunk'
-        if rclass == 'P':
-          if tags['highway'] not in ('primary','primary_link','secondary','secondary_link'):
-            tags['highway'] = 'primary'
-        if rclass == 'H':
-          if tags['highway'] not in ('secondary','secondary_link','tertiary','tertiary_link'):
-            tags['highway'] = 'tertiary'
-      if False: # else: ## временно отключено, ждём армагеддец
-        if 'name' not in tags:
-          if 'junction' not in tags:
-            if tags['highway'] not in ('unclassified', 'track', 'path', 'footway', 'residential', 'road', 'service', 'pedestrian', 'construction', 'cycleway', 'steps', 'bridlway', 'services', 'motorway_link', 'trunk_link', 'primary_link','secondary_link', 'tertiary_link', 'proposed'):
-              tags['highway'] = 'unclassified'
   if tags.get("amenity", "") == "fuel":
     if "name" in tags:
       name = tags["name"]
@@ -400,6 +360,8 @@ def NicifyTags(obj="node", oid=0, tags={}):
       name = name.replace(u"азс", u" ")
       name = name.replace(u"'", u" ")
       name = name.replace(u"station", u" ")
+      name = name.replace(u"petrol", u" ")
+      name = name.replace(u"ln", u" latvijas nafta ")
       #name = name.replace(u"\"", u" ")
       for t in (u"природный газ", u"метан", u"сжатый", u"cng"): #, u"агнкс"): - убрано по просьбе mixdm
         if t in name:
@@ -450,6 +412,7 @@ def NicifyTags(obj="node", oid=0, tags={}):
     oh = oh.replace("  "," ")
     tags["opening_hours"] = oh
     del oh
+  #tags = NicifyTagsBY(obj,oid,tags)
   equal = True
   if len(tags) == len(otags):
     for k in tags:
@@ -462,7 +425,12 @@ def NicifyTags(obj="node", oid=0, tags={}):
         break
   else:
     equal = False
+    
+  if not equal:
+    if "created_by" in tags:
+      del tags["created_by"]
   nice_tags_cache[taghash] = tags
+  
   if need_review:
     print ""
     print "http://openstreetmap.org/browse/%s/%s"%(obj,oid)
@@ -473,3 +441,67 @@ def NicifyTags(obj="node", oid=0, tags={}):
     #print ""
 
   return tags
+
+def NicifyTagsBY(obj="node", oid=0, tags={}):  
+  if obj == 'way':
+    if "ref" in tags:                                                           # добиваем ref на основе nat_ref
+      if tags["ref"][0] in "MPH":
+        if "nat_ref" not in tags:
+          tags["nat_ref"] = cyr_ref(tags["ref"])
+    if "nat_ref" in tags:                                                       # ...и nat_ref на основе ref
+      if "ref" not in tags:
+        tags["ref"] = lat_ref(tags["nat_ref"])
+    if "highway" in tags:
+      if  "name" not in tags and tags["highway"] == "living_street":
+        tags["highway"] = "service"
+        tags["living_street"] = "yes"
+
+    if "service" in tags:
+      if "living_street" in tags and tags["service"] == "parikng_aisle":
+        del tags["service"]
+
+    if 'highway' in tags:
+      if 'ref' in tags:
+        rclass = tags['ref'][0]
+        if rclass == 'M':
+          if tags['highway'] not in ('motorway','motorway_link','trunk','trunk_link'):
+            tags['highway'] = 'trunk'
+        if rclass == 'P':
+          if tags['highway'] not in ('primary','primary_link','secondary','secondary_link'):
+            tags['highway'] = 'primary'
+        if rclass == 'H':
+          if tags['highway'] not in ('secondary','secondary_link','tertiary','tertiary_link'):
+            tags['highway'] = 'tertiary'
+      if False: # else: ## временно отключено, ждём армагеддец
+        if 'name' not in tags:
+          if 'junction' not in tags:
+            if tags['highway'] not in ('unclassified', 'track', 'path', 'footway', 'residential', 'road', 'service', 'pedestrian', 'construction', 'cycleway', 'steps', 'bridlway', 'services', 'motorway_link', 'trunk_link', 'primary_link','secondary_link', 'tertiary_link', 'proposed'):
+              tags['highway'] = 'unclassified'
+  ### TODO: Better ukrainian processing
+  if False and u"name" in tags:
+    name = tags["name"]                                                         # если встретится явный белорусский в name
+    for bel_char  in (u"і",u"ў", u"вул."):
+      if bel_char in name.lower():
+        is_uk = False
+        if tags["name:uk"] == tags["name"]:
+          is_uk = True
+        for uk_char in (u"и",u"ї",u"ґ",u"є"):
+          if uk_char in name.lower():
+            tags["name:uk"] = tags["name"]
+            is_uk = True
+            break
+        if is_uk:
+          break
+        if "name:be" not in tags:                                               # унести его в name:be
+          tags["name:be"] = tags["name"]
+        if tags["name:be"] == name:
+          if "name:ru" in tags:
+            tags["name"] = tags["name:ru"]                                      # вернуть на место name:ru
+          else:
+            del tags["name"]                                                    # или хотя бы пожаловаться
+            need_review = True
+            tags["fixme:komzpa"] = u"добавить русское имя"
+            break
+    # add g. for Lithuania
+  return tags
+  
