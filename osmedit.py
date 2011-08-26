@@ -356,12 +356,12 @@ def NicifyTags(obj="node", oid=0, tags={}):
     if "service" in tags:
       if "living_street" in tags and tags["service"] == "parikng_aisle":
         del tags["service"]
-  if tags.get("addr:country","").lower() in ("by", "ru"):
+  if tags.get("addr:country","").lower() in ("by", "belarus"):
     del tags["addr:country"]
-  if "addr:city" in tags:
-    del tags["addr:city"]
-  if "addr:region" in tags:
-    del tags["addr:region"]
+    if "addr:city" in tags:
+      del tags["addr:city"]
+    if "addr:region" in tags:
+      del tags["addr:region"]
   if "postal_code" in tags:
     tags["addr:postcode"] = tags["postal_code"]
     del tags["postal_code"]
@@ -369,7 +369,12 @@ def NicifyTags(obj="node", oid=0, tags={}):
     if tags["cladr:name"].lower() == tags.get("name","").lower():
       del tags["cladr:name"]
 
-  
+  if tags.get("bridge","").lower() in ("yes", "true", "1"):
+    tags["bridge"] = "yes"
+  if tags.get("oneway","").lower() in ("yes", "true", "1"):
+    tags["oneway"] = "yes"
+
+
   if obj == 'way':
     if 'highway' in tags:
       if 'ref' in tags:
@@ -395,7 +400,7 @@ def NicifyTags(obj="node", oid=0, tags={}):
       name = name.replace(u"азс", u" ")
       name = name.replace(u"'", u" ")
       name = name.replace(u"station", u" ")
-      name = name.replace(u"\"", u" ")
+      #name = name.replace(u"\"", u" ")
       for t in (u"природный газ", u"метан", u"сжатый", u"cng"): #, u"агнкс"): - убрано по просьбе mixdm
         if t in name:
           tags[u"fuel:cng"]=u"yes"
@@ -432,7 +437,7 @@ def NicifyTags(obj="node", oid=0, tags={}):
       tags["website"] = tags["url"]
       del tags["url"]
   if "opening_hours" in tags:
-    oh = tags["opening_hours"]
+    oh = tags["opening_hours"].strip()
     oh = replace_bunch(("Пн", "Monday", "Mon"), "Mo", oh)
     oh = replace_bunch(("Вт", "Tuesday", "Tue"), "Tu", oh)
     oh = replace_bunch(("Ср", "Wednesday", "Wed"), "We", oh)
@@ -440,7 +445,7 @@ def NicifyTags(obj="node", oid=0, tags={}):
     oh = replace_bunch(("Пт", "Friday", "Fri"), "Fr", oh)
     oh = replace_bunch(("Сб", "Saturday", "Sat"), "Sa", oh)
     oh = replace_bunch(("Вс", "Sunday", "Sun"), "Su", oh)
-    oh = oh.replace("Sa,Su","Sa-Su")
+    oh = oh.replace("Sa,Su","Sa-Su").strip(";")
     oh = oh.replace(";","; ")
     oh = oh.replace("  "," ")
     tags["opening_hours"] = oh
