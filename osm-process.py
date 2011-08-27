@@ -16,6 +16,12 @@ try:
 except ImportError:
   pass
 
+#def NicifyTags(obj, oid, tags):
+  #tags = tags.copy()
+  #if "created_by" in tags:
+    #del tags["created_by"]
+  #return tags
+
 def main ():
  # changes = {}
   cs = set()

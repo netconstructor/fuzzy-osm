@@ -10,7 +10,7 @@ sys.setdefaultencoding("utf-8")          # a hack to support UTF-8
 
 ref_pattern = re.compile(u"([a-zA-Zа-яА-Я]*)[ -]*([-0-9]+)")
 fuel_ref = re.compile(u"\s[-#№](\d+)")
-post_ref = re.compile("(?:[№N]+[0-9]+[ -]+)?([0-9]{6})")
+post_ref = re.compile("(?:ПО)?(?:[№N]+[0-9]+[ -]+)?([0-9]{6})")
 
 ru2en = {u"У":"Y",u"К":"K",u"Е":"E",u"Н":"H",u"Х":"X",u"В":"B",
          u"А":"A",u"Р":"P",u"О":"O",u"С":"C",u"М":"M",u"Т":"T"}
@@ -18,7 +18,7 @@ en2ru = {}
 for k,v in ru2en.items():
   en2ru[v] = k
 
-garbage_values = frozenset([".", "-", ",", "", "(", "-)", "()", "FIXME", "t", "1"])
+garbage_values = frozenset([".", "-", ",", "", "(", "-)", "()", "FIXME", "t"])
 
 unusual_case_punct = dict([(x.decode("utf-8").lower().strip(), x.decode("utf-8").strip()) for x in open("presets/unusual_case_punct","r")])
 #print unusual_case_punct
@@ -66,12 +66,13 @@ def clean_name(need_review, name, what=("street",)):
       return u""
     name = name.replace(u".", u". ")                                    # Пр.Мира -> Пр. Мира
     if "street" in what:
-      name = name.replace(u",", u" ")                                             # Мира, пр. -> Мира пр.
+      #name = name.replace(u",", u" ")                                             # Мира, пр. -> Мира пр.
       name = name.replace(u"Пр.", u" Пр.")                                        # МираПр. -> Мира Пр.
     name = name.replace(u"№", u" №")
     name = name.replace(u"№ ", u"№")
     name = name.replace(u"/", u" / ")
-    name = name.replace(u"(", u"( ")
+    name = name.replace(u"(", u" ( ")
+    
     name = " " + name.lower() + " "
     for tr in mistakes:
       name = name.replace(" "+tr+" ", " "+mistakes[tr]+" ")
@@ -131,6 +132,7 @@ def clean_name(need_review, name, what=("street",)):
       name = name.replace(u"( )", u" ")
       name = name.replace(u" )", u")")
       name = name.replace(u"( ", u"(")
+      name = name.replace(u"A / S", u"A/S")
       #if name != oname:
       #print name
     return need_review, name
@@ -173,7 +175,7 @@ def NicifyTags(obj="node", oid=0, tags={}):
     for ref_key in ("ref", "nat_ref", "int_ref"):
       if ref_key in tags:
         refs.add(tags[ref_key])
-        a = ref_pattern.search(tags[ref_key])
+        a = ref_pattern.match(tags[ref_key])
         if a:
           letter, num = a.groups()
           letter = letter.upper()
@@ -216,22 +218,34 @@ def NicifyTags(obj="node", oid=0, tags={}):
       
     if "name:ru" in tags:
       need_review, tags["name:ru"] = clean_name(need_review, tags["name:ru"], ("street",))
-    if tags.get("name","").lower() in ("sidewalk",):
+    if tags.get("name","").lower() in ("sidewalk", "тротуар"):
       del tags["name"]
       tags["highway"] = "footway"
       tags["footway"] = "sidewalk"
+    if tags.get("name","").lower() in ("canal", "kanal", "канал"):
+      tags["waterway"] = "canal"
+      del tags["name"]
 
   if "waterway" in tags and "natural" in tags:
     if tags["waterway"] == "riverbank" and "name" in tags and tags["natural"]=="water":
       del tags["natural"]
       del tags["name"]
       need_review = True
+  if tags.get("landuse","") == "reservoir":
+    del tags["landuse"]
+    tags["natural"] = "water"
+    tags["water"] = "reservoir"
   if tags.get("natural","") == "water":
-    if tags.get("name","").lower() in ("ezers", "озеро"):
+    if tags.get("name","").lower() in ("ezers", "озеро", "lake"):
       del tags["name"]
       tags["water"] = "lake"
+    if tags.get("name","").lower() in ("пруд", "pond"):
+      del tags["name"]
+      tags["water"] = "pond"
     if "ezers" in tags.get("name","").lower() or "озеро" in tags.get("name","").lower():
       tags["water"] = "lake"
+    if "пруд" in tags.get("name","").lower() or "pond" in tags.get("name","").lower():
+      tags["water"] = "pond"
   
   if tags.get("shop","")=="car":
     if tags.get("name","").lower()=="сто" or tags.get("name","").lower()=="сто (sto)":
@@ -275,13 +289,20 @@ def NicifyTags(obj="node", oid=0, tags={}):
   if tags.get("amenity","") == "post_office":
     if tags.get("type","") == "oil":
       del tags["type"]
-    if tags.get("name","") == "Почта":
+    if tags.get("name","").lower() in ("почта","pasts"):
       del tags["name"]
+    if tags.get("ref","").lower() in ("почта","pasts"):
+      del tags["ref"]
+    if tags.get("addr:postcode","").lower() in ("почта","pasts"):
+      del tags["addr:postcode"]
     if post_ref.search(tags.get("name","")):
       tags["ref"] = post_ref.search(tags.get("name","")).groups()[0]
       if tags.get("name:ru","") == tags.get("name",""):
         del tags["name:ru"]
       del tags["name"]
+    if post_ref.search(tags.get("ref","")):
+      tags["ref"] = post_ref.search(tags.get("ref","")).groups()[0]
+
     if "ref" in tags and "addr:postcode" not in tags:
       tags["addr:postcode"] = tags["ref"]
     if "ref" not in tags and "addr:postcode" in tags:
@@ -289,6 +310,12 @@ def NicifyTags(obj="node", oid=0, tags={}):
 
 
   if "building" in tags:
+    if "landuse" in tags:
+      if tags["building"] in ("yes", "house")
+        tags["building"] = tags["landuse"]
+        del tags["landuse"]
+      else:
+        need_review = True
     if "addr:housenumber" in tags:
       if "addr:housename" in tags:
         if tags["addr:housenumber"] == tags["addr:housename"]:
@@ -412,7 +439,9 @@ def NicifyTags(obj="node", oid=0, tags={}):
     oh = oh.replace("  "," ")
     tags["opening_hours"] = oh
     del oh
-  #tags = NicifyTagsBY(obj,oid,tags)
+
+
+  tags = NicifyTagsBY(obj,oid,tags)
   equal = True
   if len(tags) == len(otags):
     for k in tags:
@@ -427,6 +456,7 @@ def NicifyTags(obj="node", oid=0, tags={}):
     equal = False
     
   if not equal:
+    pass
     if "created_by" in tags:
       del tags["created_by"]
   nice_tags_cache[taghash] = tags
@@ -502,6 +532,8 @@ def NicifyTagsBY(obj="node", oid=0, tags={}):
             need_review = True
             tags["fixme:komzpa"] = u"добавить русское имя"
             break
-    # add g. for Lithuania
+  if "highway" in tags and "name" in tags:
+    tags["name"] = tags["name"].replace("G.","g.")
+
   return tags
   
