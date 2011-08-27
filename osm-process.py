@@ -4,9 +4,18 @@
 import os
 import sys
 from lxml import etree
-from bz2 import BZ2File
+#from bz2 import BZ2File
 from osmedit import *
 
+import subprocess
+
+def osmopen(filename):
+  if filename[-3:] == "pbf":
+    return subprocess.Popen(['pbf2osm', filename], stdout=subprocess.PIPE, bufsize=1).stdout
+    
+  if filename[-3:] == "bz2":
+    return subprocess.Popen(['bzcat', filename], stdout=subprocess.PIPE, bufsize=1).stdout
+  return open(filename, "r")
 reload(sys)
 sys.setdefaultencoding("utf-8")          # a hack to support UTF-8 
 
@@ -38,7 +47,7 @@ def main ():
   WAYS_WRITTEN = 0
   NODES_READ = 0
   WAYS_READ = 0
-  osm_infile = BZ2File(sys.argv[1])
+  osm_infile = osmopen(sys.argv[1])
   nodes = {}
   nd = []
   curway = []
@@ -96,7 +105,7 @@ def main ():
     elif elem.tag == "relation":
       break
     elem.clear()
-  osm_infile = BZ2File(sys.argv[1])
+  osm_infile = osmopen(sys.argv[1])
   context = etree.iterparse(osm_infile)
   nodes_needed.difference_update(nodes_out)
   tags = {}

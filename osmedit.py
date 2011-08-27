@@ -64,6 +64,7 @@ def clean_name(need_review, name, what=("street",)):
     oname = name
     if name in garbage_values:
       return u""
+    name = " " + name.lower() + " "
     name = name.replace(u".", u". ")                                    # Пр.Мира -> Пр. Мира
     if "street" in what:
       #name = name.replace(u",", u" ")                                             # Мира, пр. -> Мира пр.
@@ -72,8 +73,11 @@ def clean_name(need_review, name, what=("street",)):
     name = name.replace(u"№ ", u"№")
     name = name.replace(u"/", u" / ")
     name = name.replace(u"(", u" ( ")
+    name = name.replace(u";", u"; ")
+    name = name.replace(u" - ", u" – ")
+    name = name.replace(u"–", u" – ")
     
-    name = " " + name.lower() + " "
+    
     for tr in mistakes:
       name = name.replace(" "+tr+" ", " "+mistakes[tr]+" ")
     if "street" in what:
@@ -198,9 +202,19 @@ def NicifyTags(obj="node", oid=0, tags={}):
             del tags[ref_key]
           elif tags.get("name","").lower() == tlr:                              # убиваем ref=Челюскинцев при name=Челюскинцев
             del tags[ref_key]
-          elif "iela" in tlr:
+          elif tlr in ("paved","unpaved"):
+            tags["surface"] = tlr
             del tags[ref_key]
-            tags["name"] = tlr
+          elif tlr in ("bing","yahoo"):
+            tags["source"] = tlr
+            del tags[ref_key]
+          elif "iela" in tlr or "szlak" in tlr:
+            if "name" not in tags or tags.get("name","").lower() in tlr:
+              del tags[ref_key]
+              tags["name"] = tlr
+            else:
+              need_review = True
+            
           else:
             need_review = True
 
@@ -211,7 +225,9 @@ def NicifyTags(obj="node", oid=0, tags={}):
     if tags["name"] in refs:
       del tags["name"]
       
-
+  if "history" in tags:
+    if "etrieved" in tags["history"]:
+      del tags["history"]
   if ("highway" in tags or "waterway" in tags) and obj != "node":
     if "name" in tags:
       need_review, tags["name"] = clean_name(need_review, tags["name"], ("street",))
@@ -242,9 +258,9 @@ def NicifyTags(obj="node", oid=0, tags={}):
     if tags.get("name","").lower() in ("пруд", "pond"):
       del tags["name"]
       tags["water"] = "pond"
-    if "ezers" in tags.get("name","").lower() or "озеро" in tags.get("name","").lower():
+    if ("ezers" in tags.get("name","").lower() or "озеро" in tags.get("name","").lower()) and not "water" in tags:
       tags["water"] = "lake"
-    if "пруд" in tags.get("name","").lower() or "pond" in tags.get("name","").lower():
+    if ("пруд" in tags.get("name","").lower() or "pond" in tags.get("name","").lower()) and not "water" in tags:
       tags["water"] = "pond"
   
   if tags.get("shop","")=="car":
@@ -311,7 +327,7 @@ def NicifyTags(obj="node", oid=0, tags={}):
 
   if "building" in tags:
     if "landuse" in tags:
-      if tags["building"] in ("yes", "house")
+      if tags["building"] in ("yes", "house", tags["landuse"]):
         tags["building"] = tags["landuse"]
         del tags["landuse"]
       else:
