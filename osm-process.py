@@ -56,6 +56,9 @@ def main ():
   nodes_out = set()
   nodes_needed = set()
   ways_out = set()
+  country = "BY"
+  if len(sys.argv) > 2:
+    country = sys.argv[2]
   
   osmcode = open("out.osm","w")
   osmcode.write('<osm version="0.6">')
@@ -71,7 +74,7 @@ def main ():
     items = dict(elem.items())
     if elem.tag == "node":
       if tags:
-        ntags = NicifyTags(elem.tag, items["id"], tags)
+        ntags = NicifyTags(elem.tag, items["id"], tags, [country])
         if tags != ntags:
           nodes_out.add(items['id'])
           osmcode.write( '<node id="%s" uid="%s" user="%s" changeset="%s" timestamp="%s" lon="%s" lat="%s" version="%s" action="modify">\n'%(items["id"], items.get("uid",0), xml_escape((items.get("user", "unknown"),))[0], items["changeset"], items["timestamp"], items["lon"],items["lat"],items["version"]))
@@ -87,7 +90,7 @@ def main ():
       nd.append(items["ref"])
     elif elem.tag == "way":
       if tags:
-        ntags = NicifyTags(elem.tag, items["id"], tags)
+        ntags = NicifyTags(elem.tag, items["id"], tags, [country])
         if tags != ntags:
           ways_out.add(items['id'])
           osmcode.write( '<way id="%s" uid="%s" user="%s" timestamp="%s" changeset="%s" version="%s" action="modify">\n'%(items["id"], items.get("uid",0), xml_escape((items.get("user", "unknown"),))[0], items["timestamp"], items["changeset"], items["version"]))

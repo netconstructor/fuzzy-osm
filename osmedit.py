@@ -73,9 +73,12 @@ def clean_name(need_review, name, what=("street",)):
     name = name.replace(u"№ ", u"№")
     name = name.replace(u"/", u" / ")
     name = name.replace(u"(", u" ( ")
+    name = name.replace(u")", u" ) ")
     name = name.replace(u";", u"; ")
-    name = name.replace(u" - ", u" – ")
-    name = name.replace(u"–", u" – ")
+    name = name.replace(u" -", u" - ")
+    name = name.replace(u"- ", u" - ")
+    name = name.replace(u"–", u" - ")
+    name = name.replace(u"*", u" * ")
     
     
     for tr in mistakes:
@@ -136,6 +139,7 @@ def clean_name(need_review, name, what=("street",)):
       name = name.replace(u"( )", u" ")
       name = name.replace(u" )", u")")
       name = name.replace(u"( ", u"(")
+      name = name.replace(u" ,", u",")
       name = name.replace(u"A / S", u"A/S")
       #if name != oname:
       #print name
@@ -156,7 +160,7 @@ def FormattedTagsPrint(tags):
     print "%15s = %30s"%(k, tags[k])
 
 
-def NicifyTags(obj="node", oid=0, tags={}):
+def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
   """
   Generates a better variants for some tags.
   Gives back a dictionary of possible values.
@@ -208,10 +212,11 @@ def NicifyTags(obj="node", oid=0, tags={}):
           elif tlr in ("bing","yahoo"):
             tags["source"] = tlr
             del tags[ref_key]
-          elif "iela" in tlr or "szlak" in tlr:
+          elif "iela" in tlr or "szlak" in tlr or "проспект" in tlr or "улица" in tlr or "переулок" in tlr:
             if "name" not in tags or tags.get("name","").lower() in tlr:
               del tags[ref_key]
               tags["name"] = tlr
+              need_review, tags["name"] = clean_name(need_review, tags["name"], ("street",))
             else:
               need_review = True
             
@@ -224,12 +229,19 @@ def NicifyTags(obj="node", oid=0, tags={}):
   if u"name" in tags:                                                           # если name == ref, то нафиг такой name
     if tags["name"] in refs:
       del tags["name"]
-      
+  
   if "history" in tags:
     if "etrieved" in tags["history"]:
       del tags["history"]
-  if ("highway" in tags or "waterway" in tags) and obj != "node":
+  if "waterway" in tags:
     if "name" in tags:
+      tags["name"] = " "+tags["name"].lower()+" "
+      tags["name"] = tags["name"].replace(" p. ","")
+      tags["name"] = tags["name"].replace(" р. ","")
+      tags["name"] = tags["name"].replace(" pека ","")
+      need_review, tags["name"] = clean_name(need_review, tags["name"], ("street",))
+  if ("highway" in tags or "waterway" in tags) and obj != "node":
+    if "name" in tags and not ("RU" in country and "highway" in tags):  # в россии тегом name занимается AMDmi3
       need_review, tags["name"] = clean_name(need_review, tags["name"], ("street",))
       
     if "name:ru" in tags:
@@ -241,7 +253,9 @@ def NicifyTags(obj="node", oid=0, tags={}):
     if tags.get("name","").lower() in ("canal", "kanal", "канал"):
       tags["waterway"] = "canal"
       del tags["name"]
-
+  if "landuse" in tags and "natural" in tags:
+    if tags["landuse"]=="forest" and tags["natural"] == "wood":
+      del tags["landuse"]
   if "waterway" in tags and "natural" in tags:
     if tags["waterway"] == "riverbank" and "name" in tags and tags["natural"]=="water":
       del tags["natural"]
@@ -330,6 +344,14 @@ def NicifyTags(obj="node", oid=0, tags={}):
       if tags["building"] in ("yes", "house", tags["landuse"]):
         tags["building"] = tags["landuse"]
         del tags["landuse"]
+      elif (tags["building"] == "dormitory" and tags["landuse"] == "residential"):
+        del tags["landuse"]
+      elif (tags["building"] in ("factory","office") and tags["landuse"] == "industrial"):
+        del tags["landuse"]
+      elif (tags["building"] in ("warehouse","store") and tags["landuse"] == "commercial"):
+        del tags["landuse"]
+      elif (tags["building"] in ("garage","garages") and tags["landuse"] == "garages"):
+        del tags["landuse"]
       else:
         need_review = True
     if "addr:housenumber" in tags:
@@ -345,9 +367,9 @@ def NicifyTags(obj="node", oid=0, tags={}):
 
 
   if tags.get("amenity","") == "cafe":
-    if tags.get("name","").lower().strip() in ("кафе",):
+    if tags.get("name","").lower().strip() in ("кафе","cafe"):
       del tags["name"]
-    if tags.get("name:ru","").lower().strip() in ("кафе",):
+    if tags.get("name:ru","").lower().strip() in ("кафе","cafe"):
       del tags["name:ru"]
 
   if tags.get("leisure","") == "stadium":                                    ## школьные "стадионы" - это просто площадки
@@ -381,12 +403,13 @@ def NicifyTags(obj="node", oid=0, tags={}):
       del tags["addr:city"]
     if "addr:region" in tags:
       del tags["addr:region"]
+    if "cladr:name" in tags:
+      if tags["cladr:name"].lower() == tags.get("name","").lower():
+        del tags["cladr:name"]
   if "postal_code" in tags:
     tags["addr:postcode"] = tags["postal_code"]
     del tags["postal_code"]
-  if "cladr:name" in tags:
-    if tags["cladr:name"].lower() == tags.get("name","").lower():
-      del tags["cladr:name"]
+
 
   if tags.get("bridge","").lower() in ("yes", "true", "1"):
     tags["bridge"] = "yes"
@@ -411,13 +434,13 @@ def NicifyTags(obj="node", oid=0, tags={}):
           tags[u"fuel:cng"]=u"yes"
           name = name.replace(t, u" ")
       for t in (u"агзс", u"gaz", u"газовая заправка", u"сжиженный", u"lpg",
-      u" газовая заправка", u"gas", u" газ ", u"газ-пропан"):
+      u" газовая заправка", u"gas", u" газ ", u"газ-пропан", "агнс"):
         if t in name:
           tags[u"fuel:lpg"]=u"yes"
           name = name.replace(t, u" ")
       need_review, name = clean_name(need_review,name, ("POI",))
       name = " "+name.lower()+" "
-      name = name.replace(u" - ", u"")
+      name = name.replace(u" - ", u" ")
       ref = fuel_ref.search(name)
       if ref:
         r = ref.groups()[0]
@@ -454,10 +477,11 @@ def NicifyTags(obj="node", oid=0, tags={}):
     oh = oh.replace(";","; ")
     oh = oh.replace("  "," ")
     tags["opening_hours"] = oh
-    del oh
-
-
-  tags = NicifyTagsBY(obj,oid,tags)
+    
+  if "created_by" in tags:
+    del tags["created_by"]
+  if "BY" in country:
+    tags = NicifyTagsBY(obj,oid,tags)
   equal = True
   if len(tags) == len(otags):
     for k in tags:
@@ -473,8 +497,7 @@ def NicifyTags(obj="node", oid=0, tags={}):
     
   if not equal:
     pass
-    if "created_by" in tags:
-      del tags["created_by"]
+
   nice_tags_cache[taghash] = tags
   
   if need_review:
