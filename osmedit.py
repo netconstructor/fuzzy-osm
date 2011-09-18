@@ -8,9 +8,9 @@ import re
 reload(sys)
 sys.setdefaultencoding("utf-8")          # a hack to support UTF-8
 
-ref_pattern = re.compile(u"([a-zA-Zа-яА-Я]*)[ -]*([-0-9]+)")
-fuel_ref = re.compile(u"\s[-#№](\d+)")
-post_ref = re.compile("(?:ПО)?(?:[№N]+[0-9]+[ -]+)?([0-9]{6})")
+ref_pattern = re.compile(u"([a-zA-Zа-яА-Я]*)[ -]*([-0-9]+)$")
+fuel_ref = re.compile(u"\s[-#№]*(\d+)\s")
+post_ref = re.compile("(?:ПО)?(?:[№N]+[0-9]+[ -]+)?([0-9]{6})$")
 
 ru2en = {u"У":"Y",u"К":"K",u"Е":"E",u"Н":"H",u"Х":"X",u"В":"B",
          u"А":"A",u"Р":"P",u"О":"O",u"С":"C",u"М":"M",u"Т":"T"}
@@ -21,6 +21,7 @@ for k,v in ru2en.items():
 garbage_values = frozenset([".", "-", ",", "", "(", "-)", "()", "FIXME", "t"])
 
 unusual_case_punct = dict([(x.decode("utf-8").lower().strip(), x.decode("utf-8").strip()) for x in open("presets/unusual_case_punct","r")])
+capital_if_first = dict([(x.decode("utf-8").lower().strip(), x.decode("utf-8").strip()) for x in open("presets/capital_if_first","r")])
 #print unusual_case_punct
 always_manual = set([x.decode("utf-8").strip() for x in open("presets/always_manual","r")])
 
@@ -63,7 +64,7 @@ def isLatin(string, fully = False):
 def clean_name(need_review, name, what=("street",)):
     oname = name
     if name in garbage_values:
-      return u""
+      return need_review, u""
     name = " " + name.lower() + " "
     name = name.replace(u".", u". ")                                    # Пр.Мира -> Пр. Мира
     if "street" in what:
@@ -74,7 +75,7 @@ def clean_name(need_review, name, what=("street",)):
     name = name.replace(u"/", u" / ")
     name = name.replace(u"(", u" ( ")
     name = name.replace(u")", u" ) ")
-    name = name.replace(u";", u"; ")
+    name = name.replace(u";", u" ; ")
     name = name.replace(u" -", u" - ")
     name = name.replace(u"- ", u" - ")
     name = name.replace(u"–", u" - ")
@@ -124,7 +125,13 @@ def clean_name(need_review, name, what=("street",)):
                       need_review = True
                     if ta in mistakes:                                                  # правим очепятки
                       ta = mistakes[ta]
-                    if ta in unusual_case_punct:                                        # необычный регистр, типа ул. или МОПРа
+                      
+                    if First and ta in capital_if_first:
+                      ta = capital_if_first[ta]
+                      ta = ta[0].upper() + ta[1:]
+                    elif not First and ta in capital_if_first:
+                      ta = capital_if_first[ta]
+                    elif ta in unusual_case_punct:                                        # необычный регистр, типа ул. или МОПРа
                       ta = unusual_case_punct[ta]
                     elif ("street" in what) or First or isLatin(ta):                 # для улиц первые прописные, для остальных пои - прописные после кавычек и английские слова
                       ta = ta[0].upper() + ta[1:]                                       # иначе поднимаем первую букву
@@ -139,6 +146,7 @@ def clean_name(need_review, name, what=("street",)):
       name = name.replace(u"( )", u" ")
       name = name.replace(u" )", u")")
       name = name.replace(u"( ", u"(")
+      name = name.replace(u" ;", u";")
       name = name.replace(u" ,", u",")
       name = name.replace(u"A / S", u"A/S")
       #if name != oname:
@@ -183,6 +191,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     for ref_key in ("ref", "nat_ref", "int_ref"):
       if ref_key in tags:
         refs.add(tags[ref_key])
+        tags[ref_key] = tags[ref_key].replace(",",";")
         a = ref_pattern.match(tags[ref_key])
         if a:
           letter, num = a.groups()
@@ -212,8 +221,8 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
           elif tlr in ("bing","yahoo"):
             tags["source"] = tlr
             del tags[ref_key]
-          elif "iela" in tlr or "szlak" in tlr or "проспект" in tlr or "улица" in tlr or "переулок" in tlr:
-            if "name" not in tags or tags.get("name","").lower() in tlr:
+          elif "iela" in tlr or "szlak" in tlr or "проспект" in tlr or "улица" in tlr or "переулок" in tlr or "тропа" in tlr:
+            if "name" not in tags:
               del tags[ref_key]
               tags["name"] = tlr
               need_review, tags["name"] = clean_name(need_review, tags["name"], ("street",))
@@ -222,6 +231,9 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
             
           else:
             need_review = True
+    if "level" in tags:
+      tags["layer"] = tags["level"]
+      del tags["level"]
 
   for ref_key in ("ref", "nat_ref", "int_ref"):                                 # собираем возможные ref
     if ref_key in tags:
@@ -257,14 +269,18 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     if tags["landuse"]=="forest" and tags["natural"] == "wood":
       del tags["landuse"]
   if "waterway" in tags and "natural" in tags:
-    if tags["waterway"] == "riverbank" and "name" in tags and tags["natural"]=="water":
+    if tags["waterway"] == "riverbank" and tags["natural"]=="water":
       del tags["natural"]
-      del tags["name"]
       need_review = True
   if tags.get("landuse","") == "reservoir":
     del tags["landuse"]
     tags["natural"] = "water"
     tags["water"] = "reservoir"
+  if tags.get("naural","") == "marsh":
+    tags["natural"] = "wetland"
+    tags["wetland"] = "marsh"
+
+
   if tags.get("natural","") == "water":
     if tags.get("name","").lower() in ("ezers", "озеро", "lake"):
       del tags["name"]
@@ -296,11 +312,11 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       for t in (u",бесплатная","free"):
         if t in name:
           tags[u"fee"]=u"no"
-          name = name.replace(t, u"").strip()      
+          name = name.replace(t, "").strip()
       for t in (u"платная","paid"):
         if t in name:
-          tags[u"fee"]=u"yes"
-          name = name.replace(t, u"").strip()
+          tags[u"fee"] = u"yes"
+          name = name.replace(t, "").strip()
       if name in ("гаражи",):
         tags["landuse"] = "garages"
         if tags.get("amenity","") == "parking":
@@ -341,14 +357,14 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
 
   if "building" in tags:
     if "landuse" in tags:
-      if tags["building"] in ("yes", "house", tags["landuse"]):
+      if tags["building"] in ("yes", "house", "*", tags["landuse"]):
         tags["building"] = tags["landuse"]
         del tags["landuse"]
-      elif (tags["building"] == "dormitory" and tags["landuse"] == "residential"):
+      elif (tags["building"] in ("dormitory", "apartments") and tags["landuse"] == "residential"):
         del tags["landuse"]
       elif (tags["building"] in ("factory","office") and tags["landuse"] == "industrial"):
         del tags["landuse"]
-      elif (tags["building"] in ("warehouse","store") and tags["landuse"] == "commercial"):
+      elif (tags["building"] in ("warehouse","store") and tags["landuse"] in ("commercial","retail")):
         del tags["landuse"]
       elif (tags["building"] in ("garage","garages") and tags["landuse"] == "garages"):
         del tags["landuse"]
@@ -385,7 +401,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       del tags["name"]
 
 
-  if tags.get("landuse","") in ("industrial", "residential"):
+  if tags.get("landuse","") in ("industrial", "residential") and "BY" in country:
     if "name" in tags:
       need_review, tags["name"] = clean_name(need_review, tags["name"], ("POI",))
     if "name:ru" in tags:
@@ -398,11 +414,6 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
 
 
   if tags.get("addr:country","").lower() in ("by", "belarus"):
-    del tags["addr:country"]
-    if "addr:city" in tags:
-      del tags["addr:city"]
-    if "addr:region" in tags:
-      del tags["addr:region"]
     if "cladr:name" in tags:
       if tags["cladr:name"].lower() == tags.get("name","").lower():
         del tags["cladr:name"]
@@ -444,8 +455,9 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       ref = fuel_ref.search(name)
       if ref:
         r = ref.groups()[0]
-        name = fuel_ref.sub(u"",name)
-        tags["ref"] = r
+        if r != "123":
+          name = fuel_ref.sub(u"",name)
+          tags["ref"] = r
       need_review, name = clean_name(need_review,name, ("POI",))
       if name:
         if tags.get("name:ru","") == tags["name"]:
@@ -464,6 +476,12 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     else:
       tags["website"] = tags["url"]
       del tags["url"]
+  if "is_in" in tags and "building" in tags:
+    if tags["is_in"].lower() in ("russia", "ru", "россия"):
+      del tags["is_in"]
+      tags["addr:country"] = "RU"
+    else:
+      need_review = True
   if "opening_hours" in tags:
     oh = tags["opening_hours"].strip()
     oh = replace_bunch(("Пн", "Monday", "Mon"), "Mo", oh)
@@ -521,9 +539,12 @@ def NicifyTagsBY(obj="node", oid=0, tags={}):
       if "ref" not in tags:
         tags["ref"] = lat_ref(tags["nat_ref"])
     if "highway" in tags:
-      if  "name" not in tags and tags["highway"] == "living_street":
-        tags["highway"] = "service"
-        tags["living_street"] = "yes"
+      if "name" not in tags:
+        if tags["highway"] == "living_street":
+          tags["highway"] = "service"
+          tags["living_street"] = "yes"
+
+
 
     if "service" in tags:
       if "living_street" in tags and tags["service"] == "parikng_aisle":
