@@ -9,9 +9,13 @@ from osmedit import *
 
 import subprocess
 
-def osmopen(filename):
-  if filename[-3:] == "pbf":
-    return subprocess.Popen(['pbf2osm', filename], stdout=subprocess.PIPE, bufsize=1).stdout
+def osmopen(filename, poly=None):
+  if filename[-3:] == "pbf" and poly:
+    return subprocess.Popen(['pbftoosm', '-i='+filename, '-B='+poly], stdout=subprocess.PIPE, bufsize=1).stdout
+
+  if filename[-3:] == "pbf" and not poly:
+    return subprocess.Popen(['pbftoosm', '-i='+filename], stdout=subprocess.PIPE, bufsize=1).stdout
+    #return subprocess.Popen(['pbf2osm', filename], stdout=subprocess.PIPE, bufsize=1).stdout
     
   if filename[-3:] == "bz2":
     return subprocess.Popen(['bzcat', filename], stdout=subprocess.PIPE, bufsize=1).stdout
@@ -47,7 +51,14 @@ def main ():
   WAYS_WRITTEN = 0
   NODES_READ = 0
   WAYS_READ = 0
-  osm_infile = osmopen(sys.argv[1])
+  country = "BY"
+  if len(sys.argv) > 2:
+    country = sys.argv[2]
+  poly = None
+  if country == 'BY':
+    if os.path.exists('BY.poly'):
+      poly = 'BY.poly'
+  osm_infile = osmopen(sys.argv[1], poly)
   nodes = {}
   nd = []
   curway = []
@@ -56,9 +67,6 @@ def main ():
   nodes_out = set()
   nodes_needed = set()
   ways_out = set()
-  country = "BY"
-  if len(sys.argv) > 2:
-    country = sys.argv[2]
   
   osmcode = open("out.osm","w")
   osmcode.write('<osm version="0.6">')

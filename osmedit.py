@@ -18,7 +18,7 @@ en2ru = {}
 for k,v in ru2en.items():
   en2ru[v] = k
 
-garbage_values = frozenset([".", "-", ",", "", "(", "-)", "()", "FIXME", "t"])
+garbage_values = frozenset([".", "-", ",", "", "(", "-)", "()", "FIXME", "t", "?"])
 
 unusual_case_punct = dict([(x.decode("utf-8").lower().strip(), x.decode("utf-8").strip()) for x in open("presets/unusual_case_punct","r")])
 capital_if_first = dict([(x.decode("utf-8").lower().strip(), x.decode("utf-8").strip()) for x in open("presets/capital_if_first","r")])
@@ -84,10 +84,7 @@ def clean_name(need_review, name, what=("street",)):
     
     for tr in mistakes:
       name = name.replace(" "+tr+" ", " "+mistakes[tr]+" ")
-    if "street" in what:
-      if " набережная" in name:                                                   # _Н_абережная ул., но Комсомольская _н_абережная
-        if ("ул" in name) or (len(name.strip()) == len(u"набережная")):
-          name = name.replace("набережная", "Набережная")
+
     for i in (u"\"",u"«",u"»",u"`"):
       name = name.replace(i, u'"')
 
@@ -272,7 +269,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     if tags["waterway"] == "riverbank" and tags["natural"]=="water":
       del tags["natural"]
       need_review = True
-  if tags.get("landuse","") == "reservoir":
+  if tags.get("landuse","") in ("reservoir", "basin"):
     del tags["landuse"]
     tags["natural"] = "water"
     tags["water"] = "reservoir"
@@ -368,18 +365,28 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
         del tags["landuse"]
       elif (tags["building"] in ("garage","garages") and tags["landuse"] == "garages"):
         del tags["landuse"]
+      elif (tags["building"] in ("hangar",) and tags["landuse"] == "garages"):
+        tags["building"] = tags["landuse"]
+        del tags["landuse"]
       else:
         need_review = True
     if "addr:housenumber" in tags:
+      
       if "addr:housename" in tags:
         if tags["addr:housenumber"] == tags["addr:housename"]:
           del tags["addr:housename"]
+      
       if "name" in tags:
         if tags["name"] == tags["addr:housenumber"]:
           if tags["addr:housenumber"].isdigit():
             del tags["name"]
           else:
             del tags["addr:housenumber"]
+    if "addr:housenumber" in tags:
+      if tags["addr:housenumber"] in ("0", "0?", "00"):
+        del tags["addr:housenumber"]      
+    if "cladr:code" in tags:
+      del tags["cladr:code"]
 
 
   if tags.get("amenity","") == "cafe":
@@ -411,22 +418,51 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       tags["landuse"] = "garages"
 
 
+  if tags.get("amenity","") == "recycling":
+    if "мусорка" in tags.get("name","").lower():
+      tags["amenity"] = "waste_basket"
+      del tags["name"]
 
-
-  if tags.get("addr:country","").lower() in ("by", "belarus"):
-    if "cladr:name" in tags:
-      if tags["cladr:name"].lower() == tags.get("name","").lower():
-        del tags["cladr:name"]
   if "postal_code" in tags:
     tags["addr:postcode"] = tags["postal_code"]
     del tags["postal_code"]
+  
 
+  #if tags.get("addr:country","").lower() in ("by", "belarus"):
+  if "cladr:name" in tags:
+    if tags["cladr:name"].lower() == tags.get("name","").lower():
+      del tags["cladr:name"]
+      if "name:ru" not in tags:
+        tags["name:ru"] = tags["name"]
+        
+  if "place_name" in tags:
+    if tags["place_name"] in ("hamlet", "village"):
+      tags["place"] = tags["place_name"]
+      del tags["place_name"]
+    elif not "name" in tags or tags["place_name"].lower() == tags.get("name","").lower():
+      tags["name"] = tags["place_name"]
+      del tags["place_name"]
+    else:
+      need_review = True
+
+  if "place_name:ru" in tags:
+    if not "name:ru" in tags or tags["place_name:ru"].lower() == tags.get("name:ru","").lower():
+      tags["name:ru"] = tags["place_name:ru"]
+      del tags["place_name:ru"]
+
+  if "place_name:en" in tags:
+    if not "name:en" in tags or tags["place_name:en"].lower() == tags.get("name:en","").lower():
+      tags["name:en"] = tags["place_name:en"]
+      del tags["place_name:en"]
+
+  if tags.get("boundary") == "administrative" and "place" in tags and "admin_level" not in tags:
+    del tags["boundary"]
 
   if tags.get("bridge","").lower() in ("yes", "true", "1"):
     tags["bridge"] = "yes"
   if tags.get("oneway","").lower() in ("yes", "true", "1"):
     tags["oneway"] = "yes"
-
+  
   if "landuse" in tags and "area" in tags:
     del tags["area"]
 
@@ -434,6 +470,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     if "name" in tags:
       name = tags["name"]
       name = " "+name.lower()+" "
+      name = name.replace(u"мазс", u" ")
       name = name.replace(u"азс", u" ")
       name = name.replace(u"'", u" ")
       name = name.replace(u"station", u" ")
@@ -449,6 +486,10 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
         if t in name:
           tags[u"fuel:lpg"]=u"yes"
           name = name.replace(t, u" ")
+      if tags.get("name:en",'').lower() == 'lpg':
+        del tags['name:en']
+        tags[u"fuel:lpg"] = u"yes"
+        
       need_review, name = clean_name(need_review,name, ("POI",))
       name = " "+name.lower()+" "
       name = name.replace(u" - ", u" ")
@@ -530,7 +571,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
   return tags
 
 def NicifyTagsBY(obj="node", oid=0, tags={}):  
-  if obj == 'way':
+  if obj == 'way' and tags.get('addr:country', 'BY') == 'BY':
     if "ref" in tags:                                                           # добиваем ref на основе nat_ref
       if tags["ref"][0] in "MPH":
         if "nat_ref" not in tags:
@@ -562,18 +603,19 @@ def NicifyTagsBY(obj="node", oid=0, tags={}):
         if rclass == 'H':
           if tags['highway'] not in ('secondary','secondary_link','tertiary','tertiary_link'):
             tags['highway'] = 'tertiary'
-      if False: # else: ## временно отключено, ждём армагеддец
+      else: #if False: # else: ## временно отключено, ждём армагеддец
         if 'name' not in tags:
-          if 'junction' not in tags:
+          if 'junction' not in tags and float(tags.get("lanes",0))<4:
+            
             if tags['highway'] not in ('unclassified', 'track', 'path', 'footway', 'residential', 'road', 'service', 'pedestrian', 'construction', 'cycleway', 'steps', 'bridlway', 'services', 'motorway_link', 'trunk_link', 'primary_link','secondary_link', 'tertiary_link', 'proposed'):
               tags['highway'] = 'unclassified'
   ### TODO: Better ukrainian processing
-  if False and u"name" in tags:
+  if  u"name" in tags:
     name = tags["name"]                                                         # если встретится явный белорусский в name
     for bel_char  in (u"і",u"ў", u"вул."):
       if bel_char in name.lower():
         is_uk = False
-        if tags["name:uk"] == tags["name"]:
+        if tags.get("name:uk") == tags["name"]:
           is_uk = True
         for uk_char in (u"и",u"ї",u"ґ",u"є"):
           if uk_char in name.lower():
