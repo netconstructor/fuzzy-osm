@@ -146,6 +146,8 @@ def clean_name(need_review, name, what=("street",)):
       name = name.replace(u" ;", u";")
       name = name.replace(u" ,", u",")
       name = name.replace(u"A / S", u"A/S")
+      if name and name[0] == '"' and name[-1] == '"':
+        name = name.strip('"')
       #if name != oname:
       #print name
     return need_review, name
@@ -185,8 +187,12 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       del tags[key]
   refs = set()                                                                  # множество вариантов написания ref'а
   if "highway" in tags:
+    if "name" in tags:
+      if tags["name"] == "S/N":
+        del tags["name"]
+        tags["highway"] = "service"
     for ref_key in ("ref", "nat_ref", "int_ref"):
-      if ref_key in tags:
+      if ref_key in tags and country[0] in ("RU", "BY", "UA", "LV"):
         refs.add(tags[ref_key])
         tags[ref_key] = tags[ref_key].replace(",",";")
         a = ref_pattern.match(tags[ref_key])
@@ -211,6 +217,8 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
               del tags["name"]                                                  # убиваем name="на Берлин" заодно
             del tags[ref_key]
           elif tags.get("name","").lower() == tlr:                              # убиваем ref=Челюскинцев при name=Челюскинцев
+            del tags[ref_key]
+          elif tlr in tags.get("name","").lower():
             del tags[ref_key]
           elif tlr in ("paved","unpaved"):
             tags["surface"] = tlr
@@ -242,6 +250,13 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
   if "history" in tags:
     if "etrieved" in tags["history"]:
       del tags["history"]
+  if "name" in tags:
+    if ";" in tags["name"]:
+      tn = tags["name"].split(";")
+      tn = list(set([t.strip() for t in tn]))
+      tn.sort()
+      tags["name"] = "; ".join(tn).strip()
+    
   if "waterway" in tags:
     if "name" in tags:
       tags["name"] = " "+tags["name"].lower()+" "
@@ -273,7 +288,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     del tags["landuse"]
     tags["natural"] = "water"
     tags["water"] = "reservoir"
-  if tags.get("naural","") == "marsh":
+  if tags.get("natural","") == "marsh":
     tags["natural"] = "wetland"
     tags["wetland"] = "marsh"
 
@@ -318,10 +333,12 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
         tags["landuse"] = "garages"
         if tags.get("amenity","") == "parking":
           del tags["amenity"]
-      if name in ("парковка", "стоянка", "автостоянка", "гаражи"):
+      need_review, tags["name"] = clean_name(need_review, tags["name"], ("POI",))
+      if name in ("парковка", "стоянка", "автостоянка", "гаражи", "автомобильная стоянка"):
         if tags.get("name:ru","").lower() == tags.get("name","").lower():
           del tags["name:ru"]
         del tags["name"]
+      
 
   if tags.get("amenity","") == "school":
     if "name" in tags:
@@ -351,8 +368,13 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     if "ref" not in tags and "addr:postcode" in tags:
       tags["ref"] = tags["addr:postcode"]
 
+  if tags.get("entrance") == "yes":
+    tags["building"] = "entrance"
+    del tags["entrance"]
 
   if "building" in tags:
+    if "area" in tags:
+      del tags["area"]
     if "landuse" in tags:
       if tags["building"] in ("yes", "house", "*", tags["landuse"]):
         tags["building"] = tags["landuse"]
@@ -370,6 +392,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
         del tags["landuse"]
       else:
         need_review = True
+
     if "addr:housenumber" in tags:
       
       if "addr:housename" in tags:
@@ -408,7 +431,9 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       del tags["name"]
 
 
-  if tags.get("landuse","") in ("industrial", "residential") and "BY" in country:
+  
+
+  if (tags.get("landuse","") in ("industrial", "residential") and "BY" in country) or tags.get("boundary","") in ("national_park",):
     if "name" in tags:
       need_review, tags["name"] = clean_name(need_review, tags["name"], ("POI",))
     if "name:ru" in tags:
@@ -430,8 +455,12 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
 
   #if tags.get("addr:country","").lower() in ("by", "belarus"):
   if "cladr:name" in tags:
-    if tags["cladr:name"].lower() == tags.get("name","").lower():
+    cn = tags["cladr:name"].lower().strip()
+    cs = tags.get("cladr:suffix","").lower().strip()
+    if tags.get("name","").lower() in (cs+" "+cn, cn+" "+cs):
       del tags["cladr:name"]
+      if "cladr:suffix" in tags:
+        del tags["cladr:suffix"]
       if "name:ru" not in tags:
         tags["name:ru"] = tags["name"]
         
@@ -457,6 +486,14 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
 
   if tags.get("boundary") == "administrative" and "place" in tags and "admin_level" not in tags:
     del tags["boundary"]
+  if not tags.get("cladr:code","0").isdigit():
+    del tags["cladr:code"]
+    if "cladr:suffix" in tags:
+      del tags["cladr:suffix"]
+  if "place" in tags:
+    for ntag in ("name:ru", "name", "name:en", "addr:postcode", "cladr:name", "int_name"):
+      if ntag in tags and tags.get(ntag).lower() in ("город н", "gorod n", "индекс города н"):
+        del tags[ntag]
 
   if tags.get("bridge","").lower() in ("yes", "true", "1"):
     tags["bridge"] = "yes"
@@ -470,19 +507,20 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     if "name" in tags:
       name = tags["name"]
       name = " "+name.lower()+" "
-      name = name.replace(u"мазс", u" ")
+      name = name.replace(u" мазс ", u" ")
+      name = name.replace(u" заправка ", u" ")
       name = name.replace(u"азс", u" ")
       name = name.replace(u"'", u" ")
       name = name.replace(u"station", u" ")
       name = name.replace(u"petrol", u" ")
       name = name.replace(u"ln", u" latvijas nafta ")
       #name = name.replace(u"\"", u" ")
-      for t in (u"природный газ", u"метан", u"сжатый", u"cng"): #, u"агнкс"): - убрано по просьбе mixdm
+      for t in (u"природный газ", u"метаном", u"метан", u"сжатый", u"cng"): #, u"агнкс"): - убрано по просьбе mixdm
         if t in name:
           tags[u"fuel:cng"]=u"yes"
           name = name.replace(t, u" ")
-      for t in (u"агзс", u"gaz", u"газовая заправка", u"сжиженный", u"lpg",
-      u" газовая заправка", u"gas", u" газ ", u"газ-пропан", "агнс"):
+      for t in (u"агзс", "газс", "азгс", u"gaz", u"газовая заправка", u"сжиженный", u"lpg",
+      u" газовая заправка", u"gas", u" газ ", u"газ-пропан", "агнс", "газовая", "пропан"):
         if t in name:
           tags[u"fuel:lpg"]=u"yes"
           name = name.replace(t, u" ")
@@ -496,18 +534,23 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       ref = fuel_ref.search(name)
       if ref:
         r = ref.groups()[0]
-        if r != "123":
+        if r not in ("123","777"):
           name = fuel_ref.sub(u"",name)
           tags["ref"] = r
       need_review, name = clean_name(need_review,name, ("POI",))
+
       if name:
-        if tags.get("name:ru","") == tags["name"]:
-          tags["name:ru"] = name
-        tags["name"] = name
+        if "name" in tags and tags.get("operator","") == tags["name"]:
+          del tags["name"]
+        else:
+          if tags.get("name:ru","") == tags["name"]:
+            tags["name:ru"] = name
+          tags["name"] = name
       else:
         if tags.get("name:ru","") == tags["name"]:
           del tags["name:ru"]
         del tags["name"]
+
   if "url" in tags:
     if "website" in tags:
       if tags["website"] == tags["url"]:
@@ -517,6 +560,19 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     else:
       tags["website"] = tags["url"]
       del tags["url"]
+  if "is_in" in tags:
+    if tags["is_in"].lower() in (tags.get("addr:country","").lower(), tags.get("addr:district","").lower(),tags.get("addr:city","").lower()):
+      del tags["is_in"]
+  if "is_in:country" in tags:
+    if tags["is_in:country"] == "Georgia":
+      tags["addr:country"] = "GE"
+      del tags["is_in:country"]
+  if "is_in:district" in tags:
+    tags["addr:district"] = tags["is_in:district"]
+    del tags["is_in:district"]
+  if "is_in:region" in tags:
+    tags["addr:region"] = tags["is_in:region"]
+    del tags["is_in:region"]
   if "is_in" in tags and "building" in tags:
     if tags["is_in"].lower() in ("russia", "ru", "россия"):
       del tags["is_in"]
@@ -525,20 +581,38 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       need_review = True
   if "opening_hours" in tags:
     oh = tags["opening_hours"].strip()
-    oh = replace_bunch(("Пн", "Monday", "Mon"), "Mo", oh)
-    oh = replace_bunch(("Вт", "Tuesday", "Tue"), "Tu", oh)
-    oh = replace_bunch(("Ср", "Wednesday", "Wed"), "We", oh)
-    oh = replace_bunch(("Чт", "Thursday", "Thu"), "Th", oh)
-    oh = replace_bunch(("Пт", "Friday", "Fri"), "Fr", oh)
-    oh = replace_bunch(("Сб", "Saturday", "Sat"), "Sa", oh)
-    oh = replace_bunch(("Вс", "Sunday", "Sun"), "Su", oh)
+    oh = replace_bunch(("Пнд", "Пн", "Moд", "Monday", "Mon"), "Mo", oh)
+    oh = replace_bunch(("Втр", "Вт", "Tuр", "Tuesday", "Tue"), "Tu", oh)
+    oh = replace_bunch(("Срд", "Ср", "Weд", "Wednesday", "Wed"), "We", oh)
+    oh = replace_bunch(("Чтв", "Чт", "Thв", "Thursday", "Thu"), "Th", oh)
+    oh = replace_bunch(("Птн", "Пят", "Frц", "Frт", "Пт", "Friday", "Fri"), "Fr", oh)
+    oh = replace_bunch(("Суб", "Сб", "Saб", "Saturday", "Sat"), "Sa", oh)
+    oh = replace_bunch(("Вск", "Вс", "Suк", "Sunday", "Sun"), "Su", oh)
+
+
+    oh = replace_bunch(("Январь", "Янв"), "Jan", oh)
+    oh = replace_bunch(("Февраль", "Фев"), "Feb", oh)
+    oh = replace_bunch(("Март", "Мар"), "Mar", oh)
+    oh = replace_bunch(("Апрель", "Апр"), "Apr", oh)
+    oh = replace_bunch(("Май", ), "May", oh)
+    oh = replace_bunch(("Июнь", "Июн"), "Jun", oh)
+    oh = replace_bunch(("Июль", "Июл"), "Jul", oh)    
+    oh = replace_bunch(("Август", "Авг"), "Aug", oh)    
+    oh = replace_bunch(("Сентябрь", "Сен"), "Sep", oh)    
+    oh = replace_bunch(("Октябрь", "Окт"), "Oct", oh)    
+    oh = replace_bunch(("Ноябрь", "Ноя"), "Nov", oh)    
+    oh = replace_bunch(("Декабрь", "Дек"), "Dec", oh)    
     oh = oh.replace("Sa,Su","Sa-Su").strip(";")
     oh = oh.replace(";","; ")
     oh = oh.replace("  "," ")
     tags["opening_hours"] = oh
-    
+  if "wpt_description" in tags and "wpt_symbol" in tags:
+    del tags["wpt_description"]
+    del tags["wpt_symbol"]
   if "created_by" in tags:
     del tags["created_by"]
+  if "source" in tags and len(tags)==1:
+    del tags["source"]
   if "BY" in country:
     tags = NicifyTagsBY(obj,oid,tags)
   equal = True
@@ -603,7 +677,7 @@ def NicifyTagsBY(obj="node", oid=0, tags={}):
         if rclass == 'H':
           if tags['highway'] not in ('secondary','secondary_link','tertiary','tertiary_link'):
             tags['highway'] = 'tertiary'
-      else: #if False: # else: ## временно отключено, ждём армагеддец
+      if False: # else: ## временно отключено, ждём армагеддец
         if 'name' not in tags:
           if 'junction' not in tags and float(tags.get("lanes",0))<4:
             
