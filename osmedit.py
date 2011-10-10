@@ -401,7 +401,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       
       if "name" in tags:
         if tags["name"] == tags["addr:housenumber"]:
-          if tags["addr:housenumber"].isdigit():
+          if tags["addr:housenumber"][0].isdigit():
             del tags["name"]
           else:
             del tags["addr:housenumber"]
@@ -611,7 +611,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     del tags["wpt_symbol"]
   if "created_by" in tags:
     del tags["created_by"]
-  if "source" in tags and len(tags)==1:
+  if "source" in tags and len(tags)==1 and obj == "node":
     del tags["source"]
   if "BY" in country:
     tags = NicifyTagsBY(obj,oid,tags)
