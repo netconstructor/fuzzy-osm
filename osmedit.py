@@ -24,6 +24,9 @@ unusual_case_punct = dict([(x.decode("utf-8").lower().strip(), x.decode("utf-8")
 capital_if_first = dict([(x.decode("utf-8").lower().strip(), x.decode("utf-8").strip()) for x in open("presets/capital_if_first","r")])
 #print unusual_case_punct
 always_manual = set([x.decode("utf-8").strip() for x in open("presets/always_manual","r")])
+property_types = set([x.decode("utf-8").strip() for x in open("presets/property_types","r")])
+for t in property_types:
+  unusual_case_punct[t.lower()] = t
 
 mistakes = [x.decode("utf-8").strip() for x in open("presets/mistakes","r")]
 mistakes = dict([(mistakes[2*i],mistakes[2*i+1]) for i in range(0,len(mistakes)/2) ])
@@ -72,9 +75,11 @@ def clean_name(need_review, name, what=("street",)):
       name = name.replace(u"Пр.", u" Пр.")                                        # МираПр. -> Мира Пр.
     name = name.replace(u"№", u" №")
     name = name.replace(u"№ ", u"№")
-    name = name.replace(u"/", u" / ")
+    name = name.replace(u"№;", u"№")
+    #name = name.replace(u"/", u" / ")
     name = name.replace(u"(", u" ( ")
     name = name.replace(u")", u" ) ")
+    name = name.replace(u",", u" , ")
     name = name.replace(u";", u" ; ")
     name = name.replace(u" -", u" - ")
     name = name.replace(u"- ", u" - ")
@@ -103,6 +108,9 @@ def clean_name(need_review, name, what=("street",)):
           ba = unusual_case_punct[ba]
           t.append(ba)
           First = False
+          if ba in property_types:
+            First = True
+
         else:
           tq = []                                                                   # кромсаем по дефисам
           tz = ba.split("-")                                                        # если [цифры]-[буквы], то это 1-я или 15-го, регистр не поднимать
@@ -133,6 +141,10 @@ def clean_name(need_review, name, what=("street",)):
                     elif ("street" in what) or First or isLatin(ta):                 # для улиц первые прописные, для остальных пои - прописные после кавычек и английские слова
                       ta = ta[0].upper() + ta[1:]                                       # иначе поднимаем первую букву
                     First = False
+                    if ta in property_types:
+                      First = True
+
+
                   tt.append(ta)
                 ta = '"'.join(tt)
               tq.append(ta)
@@ -368,9 +380,9 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     if "ref" not in tags and "addr:postcode" in tags:
       tags["ref"] = tags["addr:postcode"]
 
-  if tags.get("entrance") == "yes":
-    tags["building"] = "entrance"
-    del tags["entrance"]
+  if tags.get("building") in ("entrance", "enterance") and obj == "node":
+    tags["entrance"] = "yes"
+    del tags["building"]
 
   if "building" in tags:
     if "area" in tags:
@@ -441,6 +453,8 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     if tags.get("name","").lower().strip() in ("гаражи", ):
       del tags["name"]
       tags["landuse"] = "garages"
+    if "area" in tags:
+      del tags["area"]
 
 
   if tags.get("amenity","") == "recycling":
