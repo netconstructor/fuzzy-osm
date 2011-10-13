@@ -290,6 +290,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       del tags["name"]
       tags["highway"] = "footway"
       tags["footway"] = "sidewalk"
+  if "waterway" in tags:
     if tags.get("name","").lower() in ("canal", "kanal", "канал"):
       tags["waterway"] = "canal"
       del tags["name"]
@@ -523,6 +524,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       tags[key] = "yes"
   
   if "bridge" in tags:
+    tags['bridge'] = tags['bridge'].strip().strip('!')
     if tags.get('bridge', '').lower() in ('мост', 'ponte', 'bridge', 'generic_bridge', 'generic bridge', 'puente'):
       tags['bridge'] = "yes"
     if tags.get('bridge', '').lower() in ('foot', 'footbridge', 'footway', 'path', 'pedestrian', 'foot bridge', 'fußgängerbrücke'):
@@ -550,7 +552,9 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       tags["bridge"] = "viaduct"
     if tags.get('bridge', '').lower() in ('bailey bridge','bailey'):
       tags["bridge"] = "bailey"
-    if tags.get('bridge', '').lower() in ('бревно','log','деревянный мост','wood','wooden'):
+    if tags.get('bridge', '').lower() in ('pipe','pipeline','труба'):
+      tags["bridge"] = "pipe"
+    if tags.get('bridge', '').lower() in ('бревно','log','деревянный мост','wood','wooden', 'wooden bridge', 'tree_trunks'):
       tags["bridge"] = "yes"
       tags["material"] = 'wood'
     if tags.get('bridge', '').lower() in ('lift','lifting', 'lift_bridge', 'lifting bridge', 'elevator'):
@@ -559,6 +563,8 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       tags["bridge"] = "destroyed"
     if tags.get('bridge', '').lower() in ('swing','yes/swing', 'yes;swing'):
       tags["bridge"] = "swing"
+    if tags.get('bridge', '').lower() in ('covered', 'couvert'):
+      tags["bridge"] = "covered"
     if tags.get('bridge', '').lower() in ('pier', 'piers'):
       tags["bridge"] = "pier"
     if tags.get('bridge', '').lower() in ('layer1','layer'):
@@ -571,8 +577,10 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
 
 
 
-    if tags.get('bridge', 'yes') not in ('yes', 'viaduct', 'no', 'aqueduct', 'suspension', 'swing', 'abandoned', 'bascule', 'culvert', 'construction', 'foot', 'causeway', 'moveable', 'bailey', 'broken', 'proposed', 'lift', 'pontoon', 'historic', 'arch', 'undefined', 'destroyed', 'log'):
-      print tags['bridge'] 
+    if tags.get('bridge', 'yes') not in ('yes', 'viaduct', 'no', 'aqueduct', 'suspension', 'swing', 'abandoned', 'bascule', 'culvert', 'construction', 'foot', 'causeway', 'moveable', 'bailey', 'broken', 'proposed', 'lift', 'pontoon', 'historic', 'arch', 'undefined', 'destroyed', 'covered', ):
+      pass
+      #need_review = True
+      #print tags['bridge'] 
   
   
   if "landuse" in tags and "area" in tags:
@@ -707,7 +715,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     pass
 
   nice_tags_cache[taghash] = tags
-  need_review = False
+  #need_review = False
   if need_review:
     print ""
     print "http://openstreetmap.org/browse/%s/%s"%(obj,oid)
