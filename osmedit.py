@@ -20,6 +20,10 @@ for k,v in ru2en.items():
 
 garbage_values = frozenset([".", "-", ",", "", "(", "-)", "()", "FIXME", "t", "?"])
 
+YES_SPELLING = ("yes", "true", "1", "es", "t", "tr", "zes", "ffcc", "pt", "yed", "^y", "yx", "yr", "y", "y\\", "yes\\", "y#", "yea", "y+", "yes+1", "yµ", "uy", "on", "*", "<")
+
+
+
 unusual_case_punct = dict([(x.decode("utf-8").lower().strip(), x.decode("utf-8").strip()) for x in open("presets/unusual_case_punct","r")])
 capital_if_first = dict([(x.decode("utf-8").lower().strip(), x.decode("utf-8").strip()) for x in open("presets/capital_if_first","r")])
 #print unusual_case_punct
@@ -380,8 +384,13 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     if "ref" not in tags and "addr:postcode" in tags:
       tags["ref"] = tags["addr:postcode"]
 
-  if tags.get("building") in ("entrance", "enterance") and obj == "node":
-    tags["entrance"] = "yes"
+  for t in ('enterance', 'entrace', 'enterace'):
+    if t in tags:
+      tags["enterance"] = tags[t]
+      del tags[t]
+  if tags.get("building") in ("entrance", "enterance", "entrace", 'enterace') and obj == "node":
+    if "entrance" not in tags:
+      tags["entrance"] = "yes"
     del tags["building"]
 
   if "building" in tags:
@@ -509,10 +518,62 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       if ntag in tags and tags.get(ntag).lower() in ("город н", "gorod n", "индекс города н"):
         del tags[ntag]
 
-  if tags.get("bridge","").lower() in ("yes", "true", "1"):
-    tags["bridge"] = "yes"
-  if tags.get("oneway","").lower() in ("yes", "true", "1"):
-    tags["oneway"] = "yes"
+  for key in ('bridge', 'oneway', 'building', 'enterace'):
+    if tags.get(key,"").lower() in YES_SPELLING:
+      tags[key] = "yes"
+  
+  if "bridge" in tags:
+    if tags.get('bridge', '').lower() in ('мост', 'ponte', 'bridge', 'generic_bridge', 'generic bridge', 'puente'):
+      tags['bridge'] = "yes"
+    if tags.get('bridge', '').lower() in ('foot', 'footbridge', 'footway', 'path', 'pedestrian', 'foot bridge', 'fußgängerbrücke'):
+      if "foot" not in tags:
+        tags["foot"] = "yes"
+      if "highway" not in tags:
+        tags["highway"] = "footway"
+      tags["bridge"] = "foot"
+    if tags.get('bridge', '').lower() in ('residential', 'track', 'primary', 'unclassified', 'trunk_link', 'road', 'ford', 'bridleway'):
+      tags["bridge"] = "yes"
+      tags["highway"] = tags.get('highway', tags.get('bridge', '')).lower()
+    if tags.get('bridge', '').lower() in ('causway',):
+      tags["bridge"] = "causeway"
+    if tags.get('bridge', '').lower() in ('suspension','suspended', 'suspensioin'):
+      tags["bridge"] = "suspension"
+    if tags.get('bridge', '').lower() in ('in planung',):
+      tags["bridge"] = "proposed"
+    if tags.get('bridge', '').lower() in ('no','bridge_no'):
+      tags["bridge"] = "no"
+    if tags.get('bridge', '').lower() in ('pantoon','pontoon', 'pont', 'floating', 'panton', 'floating_bridge'):
+      tags["bridge"] = "pontoon"
+    if tags.get('bridge', '').lower() in ('aqueduct','aqueduc','aquaduct','aquaeduct'):
+      tags["bridge"] = "aqueduct"
+    if tags.get('bridge', '').lower() in ('viaduct','viadute'):
+      tags["bridge"] = "viaduct"
+    if tags.get('bridge', '').lower() in ('bailey bridge','bailey'):
+      tags["bridge"] = "bailey"
+    if tags.get('bridge', '').lower() in ('бревно','log','деревянный мост','wood','wooden'):
+      tags["bridge"] = "yes"
+      tags["material"] = 'wood'
+    if tags.get('bridge', '').lower() in ('lift','lifting', 'lift_bridge', 'lifting bridge', 'elevator'):
+      tags["bridge"] = "lift"
+    if tags.get('bridge', '').lower() in ('destroyed','collapsed', 'destructed', 'разрушен', 'missing', 'demolished', 'former'):
+      tags["bridge"] = "destroyed"
+    if tags.get('bridge', '').lower() in ('swing','yes/swing', 'yes;swing'):
+      tags["bridge"] = "swing"
+    if tags.get('bridge', '').lower() in ('pier', 'piers'):
+      tags["bridge"] = "pier"
+    if tags.get('bridge', '').lower() in ('layer1','layer'):
+      tags["bridge"] = "yes"
+      tags["layer"] = "1"
+    if tags.get('bridge', '').lower() in ('bing','yahoo','bing maps'):
+      tags["source"] = tags["bridge"]
+      tags["bridge"] = "yes"
+      
+
+
+
+    if tags.get('bridge', 'yes') not in ('yes', 'viaduct', 'no', 'aqueduct', 'suspension', 'swing', 'abandoned', 'bascule', 'culvert', 'construction', 'foot', 'causeway', 'moveable', 'bailey', 'broken', 'proposed', 'lift', 'pontoon', 'historic', 'arch', 'undefined', 'destroyed', 'log'):
+      print tags['bridge'] 
+  
   
   if "landuse" in tags and "area" in tags:
     del tags["area"]
@@ -646,7 +707,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     pass
 
   nice_tags_cache[taghash] = tags
-  
+  need_review = False
   if need_review:
     print ""
     print "http://openstreetmap.org/browse/%s/%s"%(obj,oid)
