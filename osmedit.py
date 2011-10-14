@@ -4,6 +4,9 @@
 import os
 import sys
 import re
+from rulesets import *
+from rulesets import Memoize
+import rulesets
 
 reload(sys)
 sys.setdefaultencoding("utf-8")          # a hack to support UTF-8
@@ -20,7 +23,7 @@ for k,v in ru2en.items():
 
 garbage_values = frozenset([".", "-", ",", "", "(", "-)", "()", "FIXME", "t", "?"])
 
-YES_SPELLING = ("yes", "true", "1", "es", "t", "tr", "zes", "ffcc", "pt", "yed", "^y", "yx", "yr", "y", "y\\", "yes\\", "y#", "yea", "y+", "yes+1", "yµ", "uy", "on", "*", "<")
+YES_SPELLING = ("yes", "true", "1", "es", "t", "tr", "zes", "ffcc", "pt", "yed", "^y", "yx", "yr", "y", "y\\", "yes\\", "y#", "yea", "y+", "yes+1", "yµ", "uy", "on", "*", "<", "#", 'e', 'e#')
 
 
 
@@ -42,10 +45,7 @@ for t in unusual_case_punct:
 
 nice_tags_cache = {}
 
-def replace_bunch(bunch, to, where):
-  for z in bunch:
-    where = where.replace(z, to)
-  return where
+
 
 def cyr_ref(ref):
   for i in en2ru:
@@ -68,6 +68,7 @@ def isLatin(string, fully = False):
       return False
   return latin
 
+@Memoize
 def clean_name(need_review, name, what=("street",)):
     oname = name
     if name in garbage_values:
@@ -182,21 +183,21 @@ def FormattedTagsPrint(tags):
   for k in ll:
     print "%15s = %30s"%(k, tags[k])
 
-
+@Memoize
 def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
   """
   Generates a better variants for some tags.
   Gives back a dictionary of possible values.
   """
   need_review = False                                                           # отметка о том, что набор ключей требует вмешательства человека
-  taghash = obj+repr(tags)                                                      # кеш - человека не надо спрашивать по два раза
-  if taghash in nice_tags_cache:
-    return nice_tags_cache[taghash]
   changes = {}
   otags = tags.copy()
   tags = tags.copy()
 
-
+  need_review, tags = rulesets.bridges.NicifyTags         (obj, oid, tags, country, need_review)
+  need_review, tags = rulesets.entrances.NicifyTags       (obj, oid, tags, country, need_review)
+  if 'opening_hours' in tags:
+    need_review, tags = rulesets.opening_hours.NicifyTags (obj, oid, tags, country, need_review)
   for key in tags.keys():
     tags[key] = tags[key].strip()
     if tags[key] in garbage_values:
@@ -385,14 +386,8 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
     if "ref" not in tags and "addr:postcode" in tags:
       tags["ref"] = tags["addr:postcode"]
 
-  for t in ('enterance', 'entrace', 'enterace'):
-    if t in tags:
-      tags["enterance"] = tags[t]
-      del tags[t]
-  if tags.get("building") in ("entrance", "enterance", "entrace", 'enterace') and obj == "node":
-    if "entrance" not in tags:
-      tags["entrance"] = "yes"
-    del tags["building"]
+
+
 
   if "building" in tags:
     if "area" in tags:
@@ -519,69 +514,16 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       if ntag in tags and tags.get(ntag).lower() in ("город н", "gorod n", "индекс города н"):
         del tags[ntag]
 
-  for key in ('bridge', 'oneway', 'building', 'enterace'):
+  for key in ('bridge', 'oneway', 'building', 'entrance'):
     if tags.get(key,"").lower() in YES_SPELLING:
       tags[key] = "yes"
   
-  if "bridge" in tags:
-    tags['bridge'] = tags['bridge'].strip().strip('!')
-    if tags.get('bridge', '').lower() in ('мост', 'ponte', 'bridge', 'generic_bridge', 'generic bridge', 'puente'):
-      tags['bridge'] = "yes"
-    if tags.get('bridge', '').lower() in ('foot', 'footbridge', 'footway', 'path', 'pedestrian', 'foot bridge', 'fußgängerbrücke'):
-      if "foot" not in tags:
-        tags["foot"] = "yes"
-      if "highway" not in tags:
-        tags["highway"] = "footway"
-      tags["bridge"] = "foot"
-    if tags.get('bridge', '').lower() in ('residential', 'track', 'primary', 'unclassified', 'trunk_link', 'road', 'ford', 'bridleway'):
-      tags["bridge"] = "yes"
-      tags["highway"] = tags.get('highway', tags.get('bridge', '')).lower()
-    if tags.get('bridge', '').lower() in ('causway',):
-      tags["bridge"] = "causeway"
-    if tags.get('bridge', '').lower() in ('suspension','suspended', 'suspensioin'):
-      tags["bridge"] = "suspension"
-    if tags.get('bridge', '').lower() in ('in planung',):
-      tags["bridge"] = "proposed"
-    if tags.get('bridge', '').lower() in ('no','bridge_no'):
-      tags["bridge"] = "no"
-    if tags.get('bridge', '').lower() in ('pantoon','pontoon', 'pont', 'floating', 'panton', 'floating_bridge'):
-      tags["bridge"] = "pontoon"
-    if tags.get('bridge', '').lower() in ('aqueduct','aqueduc','aquaduct','aquaeduct'):
-      tags["bridge"] = "aqueduct"
-    if tags.get('bridge', '').lower() in ('viaduct','viadute'):
-      tags["bridge"] = "viaduct"
-    if tags.get('bridge', '').lower() in ('bailey bridge','bailey'):
-      tags["bridge"] = "bailey"
-    if tags.get('bridge', '').lower() in ('pipe','pipeline','труба'):
-      tags["bridge"] = "pipe"
-    if tags.get('bridge', '').lower() in ('бревно','log','деревянный мост','wood','wooden', 'wooden bridge', 'tree_trunks'):
-      tags["bridge"] = "yes"
-      tags["material"] = 'wood'
-    if tags.get('bridge', '').lower() in ('lift','lifting', 'lift_bridge', 'lifting bridge', 'elevator'):
-      tags["bridge"] = "lift"
-    if tags.get('bridge', '').lower() in ('destroyed','collapsed', 'destructed', 'разрушен', 'missing', 'demolished', 'former'):
-      tags["bridge"] = "destroyed"
-    if tags.get('bridge', '').lower() in ('swing','yes/swing', 'yes;swing'):
-      tags["bridge"] = "swing"
-    if tags.get('bridge', '').lower() in ('covered', 'couvert'):
-      tags["bridge"] = "covered"
-    if tags.get('bridge', '').lower() in ('pier', 'piers'):
-      tags["bridge"] = "pier"
-    if tags.get('bridge', '').lower() in ('layer1','layer'):
-      tags["bridge"] = "yes"
-      tags["layer"] = "1"
-    if tags.get('bridge', '').lower() in ('bing','yahoo','bing maps'):
-      tags["source"] = tags["bridge"]
-      tags["bridge"] = "yes"
-      
 
-
-
-    if tags.get('bridge', 'yes') not in ('yes', 'viaduct', 'no', 'aqueduct', 'suspension', 'swing', 'abandoned', 'bascule', 'culvert', 'construction', 'foot', 'causeway', 'moveable', 'bailey', 'broken', 'proposed', 'lift', 'pontoon', 'historic', 'arch', 'undefined', 'destroyed', 'covered', ):
-      pass
       #need_review = True
       #print tags['bridge'] 
   
+  if tags.get('Type', '').lower() in ('0x13', '0x6c', '0x6', '0x6f', '0xb'):
+    del tags['Type']
   
   if "landuse" in tags and "area" in tags:
     del tags["area"]
@@ -662,38 +604,14 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
       tags["addr:country"] = "RU"
     else:
       need_review = True
-  if "opening_hours" in tags:
-    oh = tags["opening_hours"].strip()
-    oh = replace_bunch(("Пнд", "Пн", "Moд", "Monday", "Mon"), "Mo", oh)
-    oh = replace_bunch(("Втр", "Вт", "Tuр", "Tuesday", "Tue"), "Tu", oh)
-    oh = replace_bunch(("Срд", "Ср", "Weд", "Wednesday", "Wed"), "We", oh)
-    oh = replace_bunch(("Чтв", "Чт", "Thв", "Thursday", "Thu"), "Th", oh)
-    oh = replace_bunch(("Птн", "Пят", "Frц", "Frт", "Пт", "Friday", "Fri"), "Fr", oh)
-    oh = replace_bunch(("Суб", "Сб", "Saб", "Saturday", "Sat"), "Sa", oh)
-    oh = replace_bunch(("Вск", "Вс", "Suк", "Sunday", "Sun"), "Su", oh)
 
-
-    oh = replace_bunch(("Январь", "Янв"), "Jan", oh)
-    oh = replace_bunch(("Февраль", "Фев"), "Feb", oh)
-    oh = replace_bunch(("Март", "Мар"), "Mar", oh)
-    oh = replace_bunch(("Апрель", "Апр"), "Apr", oh)
-    oh = replace_bunch(("Май", ), "May", oh)
-    oh = replace_bunch(("Июнь", "Июн"), "Jun", oh)
-    oh = replace_bunch(("Июль", "Июл"), "Jul", oh)    
-    oh = replace_bunch(("Август", "Авг"), "Aug", oh)    
-    oh = replace_bunch(("Сентябрь", "Сен"), "Sep", oh)    
-    oh = replace_bunch(("Октябрь", "Окт"), "Oct", oh)    
-    oh = replace_bunch(("Ноябрь", "Ноя"), "Nov", oh)    
-    oh = replace_bunch(("Декабрь", "Дек"), "Dec", oh)    
-    oh = oh.replace("Sa,Su","Sa-Su").strip(";")
-    oh = oh.replace(";","; ")
-    oh = oh.replace("  "," ")
-    tags["opening_hours"] = oh
   if "wpt_description" in tags and "wpt_symbol" in tags:
     del tags["wpt_description"]
     del tags["wpt_symbol"]
   if "created_by" in tags:
     del tags["created_by"]
+  if "converted_by" in tags:
+    del tags["converted_by"]
   if "source" in tags and len(tags)==1 and obj == "node":
     del tags["source"]
   if "BY" in country:
@@ -714,8 +632,6 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
   if not equal:
     pass
 
-  nice_tags_cache[taghash] = tags
-  #need_review = False
   if need_review:
     print ""
     print "http://openstreetmap.org/browse/%s/%s"%(obj,oid)
@@ -727,7 +643,7 @@ def NicifyTags(obj="node", oid=0, tags={}, country = ("BY",)):
 
   return tags
 
-def NicifyTagsBY(obj="node", oid=0, tags={}):  
+def NicifyTagsBY(obj="node", oid=0, tags={}):
   if obj == 'way' and tags.get('addr:country', 'BY') == 'BY':
     if "ref" in tags:                                                           # добиваем ref на основе nat_ref
       if tags["ref"][0] in "MPH":
